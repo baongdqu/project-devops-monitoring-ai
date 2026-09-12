@@ -1,0 +1,40 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C environments & Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment variables & secrets (Bảo mật thông tin nhạy cảm)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Azure CLI & temporary deployment artifacts
+deploy_aca_generated.yaml
+deploy_*.yaml
+*.tar.gz
+*.b64
+
+# IDE files
+.vscode/
+.idea/
+.gemini/
+*.swp
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
