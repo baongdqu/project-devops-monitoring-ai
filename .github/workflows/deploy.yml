@@ -19,67 +19,67 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Package app_url_shortener
+        run: |
+          cd app_url_shortener
+          tar -czf /tmp/app_web.tar.gz main.py service.py storage.py __init__.py
+          echo "ARCHIVE_B64=$(base64 -w 0 /tmp/app_web.tar.gz)" >> $GITHUB_ENV
+
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy urlshortener-app to ACA
-        uses: azure/CLI@v2
-        with:
-          inlineScript: |
-            echo "Packaging app_url_shortener..."
-            cd app_url_shortener
-            tar -czf /tmp/app_web.tar.gz main.py service.py storage.py __init__.py
-            ARCHIVE_B64=$(base64 -w 0 /tmp/app_web.tar.gz)
-            
-            # Kiểm tra xem có cấu hình Cosmos DB không
-            COSMOS_ENDPOINT="${{ secrets.COSMOS_ENDPOINT }}"
-            COSMOS_KEY="${{ secrets.COSMOS_KEY }}"
-            
-            cat <<EOF > deploy_web.yaml
-            location: ${{ env.LOCATION }}
-            type: Microsoft.App/containerApps
-            properties:
-              managedEnvironmentId: $(az containerapp env show -n ${{ env.ACA_ENVIRONMENT }} -g ${{ env.RESOURCE_GROUP }} --query id -o tsv)
-              configuration:
-                activeRevisionsMode: Single
-                ingress:
-                  external: true
-                  targetPort: 80
-                  transport: auto
-                  allowInsecure: false
-              template:
-                containers:
-                  - image: python:3.11-slim
-                    name: urlshortener
-                    env:
-                      - name: APP_ARCHIVE_B64
-                        value: "$ARCHIVE_B64"
-                      - name: DB_FILE
-                        value: "/app/urls.db"
-                      - name: COSMOS_ENDPOINT
-                        value: "$COSMOS_ENDPOINT"
-                      - name: COSMOS_KEY
-                        value: "$COSMOS_KEY"
-                      - name: COSMOS_DATABASE
-                        value: "urlshortener-db"
-                      - name: COSMOS_CONTAINER
-                        value: "links"
-                    command: ["/bin/sh", "-c"]
-                    args:
-                      - 'mkdir -p /app && echo "$APP_ARCHIVE_B64" | base64 -d | tar -xz -C /app && pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org fastapi uvicorn pydantic azure-cosmos && python -m uvicorn main:app --app-dir /app --host 0.0.0.0 --port 80'
-                    resources:
-                      cpu: 0.25
-                      memory: 0.5Gi
-                scale:
-                  minReplicas: 0
-                  maxReplicas: 3
-            EOF
+        run: |
+          COSMOS_ENDPOINT="${{ secrets.COSMOS_ENDPOINT }}"
+          COSMOS_KEY="${{ secrets.COSMOS_KEY }}"
+          
+          ENV_ID=$(az containerapp env show -n ${{ env.ACA_ENVIRONMENT }} -g ${{ env.RESOURCE_GROUP }} --query id -o tsv)
 
-            echo "Updating Azure Container App urlshortener-app..."
-            az containerapp update -g ${{ env.RESOURCE_GROUP }} -n urlshortener-app --yaml deploy_web.yaml
-            echo "✅ Successfully deployed urlshortener-app to ACA!"
+          cat <<EOF > deploy_web.yaml
+          location: ${{ env.LOCATION }}
+          type: Microsoft.App/containerApps
+          properties:
+            managedEnvironmentId: $ENV_ID
+            configuration:
+              activeRevisionsMode: Single
+              ingress:
+                external: true
+                targetPort: 80
+                transport: auto
+                allowInsecure: false
+            template:
+              containers:
+                - image: python:3.11-slim
+                  name: urlshortener
+                  env:
+                    - name: APP_ARCHIVE_B64
+                      value: "${{ env.ARCHIVE_B64 }}"
+                    - name: DB_FILE
+                      value: "/app/urls.db"
+                    - name: COSMOS_ENDPOINT
+                      value: "$COSMOS_ENDPOINT"
+                    - name: COSMOS_KEY
+                      value: "$COSMOS_KEY"
+                    - name: COSMOS_DATABASE
+                      value: "urlshortener-db"
+                    - name: COSMOS_CONTAINER
+                      value: "links"
+                  command: ["/bin/sh", "-c"]
+                  args:
+                    - 'mkdir -p /app && echo "$APP_ARCHIVE_B64" | base64 -d | tar -xz -C /app && pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org fastapi uvicorn pydantic azure-cosmos && python -m uvicorn main:app --app-dir /app --host 0.0.0.0 --port 80'
+                  resources:
+                    cpu: 0.25
+                    memory: 0.5Gi
+              scale:
+                minReplicas: 0
+                maxReplicas: 3
+          EOF
+
+          echo "Updating Azure Container App urlshortener-app..."
+          az containerapp update -g ${{ env.RESOURCE_GROUP }} -n urlshortener-app --yaml deploy_web.yaml
+          echo "✅ Successfully deployed urlshortener-app to ACA!"
 
   deploy-ai-agent:
     name: Deploy AI Telegram Bot
@@ -88,62 +88,63 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Package app_ai_telegram
+        run: |
+          cd app_ai_telegram
+          tar --exclude='*.pyc' --exclude='*.db' --exclude='__pycache__' -czf /tmp/app_ai.tar.gz .
+          echo "ARCHIVE_B64=$(base64 -w 0 /tmp/app_ai.tar.gz)" >> $GITHUB_ENV
+
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy ai-telegram-agent to ACA
-        uses: azure/CLI@v2
-        with:
-          inlineScript: |
-            echo "Packaging app_ai_telegram..."
-            cd app_ai_telegram
-            tar --exclude='*.pyc' --exclude='*.db' --exclude='__pycache__' -czf /tmp/app_ai.tar.gz .
-            ARCHIVE_B64=$(base64 -w 0 /tmp/app_ai.tar.gz)
+        run: |
+          ENV_ID=$(az containerapp env show -n ${{ env.ACA_ENVIRONMENT }} -g ${{ env.RESOURCE_GROUP }} --query id -o tsv)
 
-            cat <<EOF > deploy_ai.yaml
-            location: ${{ env.LOCATION }}
-            type: Microsoft.App/containerApps
-            properties:
-              managedEnvironmentId: $(az containerapp env show -n ${{ env.ACA_ENVIRONMENT }} -g ${{ env.RESOURCE_GROUP }} --query id -o tsv)
-              configuration:
-                activeRevisionsMode: Single
-                ingress:
-                  external: true
-                  targetPort: 80
-                  transport: auto
-                  allowInsecure: false
-              template:
-                containers:
-                  - image: python:3.11-slim
-                    name: ai-telegram-bot
-                    env:
-                      - name: APP_ARCHIVE_B64
-                        value: "$ARCHIVE_B64"
-                      - name: TELEGRAM_BOT_TOKEN
-                        value: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
-                      - name: OPENROUTER_API_KEY
-                        value: "${{ secrets.OPENROUTER_API_KEY }}"
-                      - name: OPENROUTER_MODEL
-                        value: "openrouter/free"
-                      - name: TAVILY_API_KEY
-                        value: "${{ secrets.TAVILY_API_KEY }}"
-                      - name: PORT
-                        value: "80"
-                      - name: HOST
-                        value: "0.0.0.0"
-                    command: ["/bin/sh", "-c"]
-                    args:
-                      - 'mkdir -p /app && echo "$APP_ARCHIVE_B64" | base64 -d | tar -xz -C /app && pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org -r /app/requirements.txt && cd /app && python bot/telegram_runner.py'
-                    resources:
-                      cpu: 0.5
-                      memory: 1.0Gi
-                scale:
-                  minReplicas: 1
-                  maxReplicas: 1
-            EOF
+          cat <<EOF > deploy_ai.yaml
+          location: ${{ env.LOCATION }}
+          type: Microsoft.App/containerApps
+          properties:
+            managedEnvironmentId: $ENV_ID
+            configuration:
+              activeRevisionsMode: Single
+              ingress:
+                external: true
+                targetPort: 80
+                transport: auto
+                allowInsecure: false
+            template:
+              containers:
+                - image: python:3.11-slim
+                  name: ai-telegram-bot
+                  env:
+                    - name: APP_ARCHIVE_B64
+                      value: "${{ env.ARCHIVE_B64 }}"
+                    - name: TELEGRAM_BOT_TOKEN
+                      value: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
+                    - name: OPENROUTER_API_KEY
+                      value: "${{ secrets.OPENROUTER_API_KEY }}"
+                    - name: OPENROUTER_MODEL
+                      value: "openrouter/free"
+                    - name: TAVILY_API_KEY
+                      value: "${{ secrets.TAVILY_API_KEY }}"
+                    - name: PORT
+                      value: "80"
+                    - name: HOST
+                      value: "0.0.0.0"
+                  command: ["/bin/sh", "-c"]
+                  args:
+                    - 'mkdir -p /app && echo "$APP_ARCHIVE_B64" | base64 -d | tar -xz -C /app && pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org -r /app/requirements.txt && cd /app && python bot/telegram_runner.py'
+                  resources:
+                    cpu: 0.5
+                    memory: 1.0Gi
+              scale:
+                minReplicas: 1
+                maxReplicas: 1
+          EOF
 
-            echo "Updating Azure Container App ai-telegram-agent..."
-            az containerapp update -g ${{ env.RESOURCE_GROUP }} -n ai-telegram-agent --yaml deploy_ai.yaml
-            echo "✅ Successfully deployed ai-telegram-agent to ACA!"
+          echo "Updating Azure Container App ai-telegram-agent..."
+          az containerapp update -g ${{ env.RESOURCE_GROUP }} -n ai-telegram-agent --yaml deploy_ai.yaml
+          echo "✅ Successfully deployed ai-telegram-agent to ACA!"
