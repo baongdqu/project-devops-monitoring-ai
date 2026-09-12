@@ -55,7 +55,7 @@ jobs:
                   name: urlshortener
                   env:
                     - name: APP_ARCHIVE_B64
-                      value: "${{ env.ARCHIVE_B64 }}"
+                      value: "$ARCHIVE_B64"
                     - name: DB_FILE
                       value: "/app/urls.db"
                     - name: COSMOS_ENDPOINT
@@ -122,7 +122,7 @@ jobs:
                   name: ai-telegram-bot
                   env:
                     - name: APP_ARCHIVE_B64
-                      value: "${{ env.ARCHIVE_B64 }}"
+                      value: "$ARCHIVE_B64"
                     - name: TELEGRAM_BOT_TOKEN
                       value: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
                     - name: OPENROUTER_API_KEY
