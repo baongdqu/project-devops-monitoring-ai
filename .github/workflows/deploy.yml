@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 env:
-  RESOURCE_GROUP: rg-devops-aca
-  ACA_ENVIRONMENT: urlshortener-app-env
+  RESOURCE_GROUP: rg-devops-aca-github
+  ACA_ENVIRONMENT: urlshortener-env-github
   LOCATION: eastasia
 
 jobs:
@@ -77,9 +77,10 @@ jobs:
                 maxReplicas: 3
           EOF
 
-          echo "Updating Azure Container App urlshortener-app..."
-          az containerapp update -g ${{ env.RESOURCE_GROUP }} -n urlshortener-app --yaml deploy_web.yaml
-          echo "✅ Successfully deployed urlshortener-app to ACA!"
+          echo "Updating Azure Container App urlshortener-app-github..."
+          az containerapp create -g ${{ env.RESOURCE_GROUP }} -n urlshortener-app-github --yaml deploy_web.yaml || \
+          az containerapp update -g ${{ env.RESOURCE_GROUP }} -n urlshortener-app-github --yaml deploy_web.yaml
+          echo "✅ Successfully deployed urlshortener-app-github to ACA!"
 
   deploy-ai-agent:
     name: Deploy AI Telegram Bot
@@ -145,6 +146,7 @@ jobs:
                 maxReplicas: 1
           EOF
 
-          echo "Updating Azure Container App ai-telegram-agent..."
-          az containerapp update -g ${{ env.RESOURCE_GROUP }} -n ai-telegram-agent --yaml deploy_ai.yaml
-          echo "✅ Successfully deployed ai-telegram-agent to ACA!"
+          echo "Updating Azure Container App ai-telegram-agent-github..."
+          az containerapp create -g ${{ env.RESOURCE_GROUP }} -n ai-telegram-agent-github --yaml deploy_ai.yaml || \
+          az containerapp update -g ${{ env.RESOURCE_GROUP }} -n ai-telegram-agent-github --yaml deploy_ai.yaml
+          echo "✅ Successfully deployed ai-telegram-agent-github to ACA!"

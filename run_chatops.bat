@@ -18,8 +18,8 @@ if "%1"=="mcp" (
     echo [Chay thu nghiem AI Telegram Bot + Healthcheck tai Local...]
     "%AGENT_PYTHON%" app_ai_telegram\bot\telegram_runner.py
 ) else if "%1"=="ai-deploy" (
-    echo [Trien khai AI Telegram Bot len Azure Container Apps...]
-    "%AGENT_PYTHON%" app_ai_telegram\deploy_azure.py
+    echo [Trien khai ca Web App va AI Bot tu Local len Azure ACA...]
+    "%AGENT_PYTHON%" deploy_local.py
 ) else (
     echo [Cach su dung:]
     echo   run_chatops.bat mcp        : Kiem tra chay Azure DevOps MCP Server
