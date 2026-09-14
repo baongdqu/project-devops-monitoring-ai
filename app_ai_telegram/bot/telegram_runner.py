@@ -146,6 +146,29 @@ async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat_id = str(update.effective_chat.id)
     th_id = await get_or_create_thread(str(user.id), user.first_name)
 
+    # Kiểm tra intent scale bằng ngôn ngữ tự nhiên để kích hoạt Human-in-the-loop Guardrail
+    import re
+    scale_match = re.search(r"(?:scale|tăng|giảm|chỉnh|điều chỉnh).+?(\d+)\s*(?:pod|replica|bản)", text, re.IGNORECASE)
+    if scale_match:
+        reps = int(scale_match.group(1))
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Xác Nhận Phê Duyệt", callback_data=f"approve_scale:{reps}"),
+                InlineKeyboardButton("❌ Hủy Bỏ Lệnh", callback_data="cancel_scale")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        confirm_text = (
+            f"🛡️ **[HUMAN-IN-THE-LOOP GUARDRAIL] YÊU CẦU PHÊ DUYỆT**\n\n"
+            f"AI nhận diện yêu cầu thay đổi tài nguyên hạ tầng Azure Container Apps:\n"
+            f"• **Ứng dụng**: `urlshortener-app` (Resource Group: `rg-devops-aca`)\n"
+            f"• **Số Replicas Mục Tiêu**: `{reps}` (Min: {reps}, Max: {max(reps, 3)})\n"
+            f"• **Người yêu cầu**: {user.first_name} (ID: `{user.id}`)\n\n"
+            f"⚠️ *Theo chính sách DevSecOps Guardrail, thao tác nhạy cảm này bị chặn tự động và yêu cầu sự phê duyệt thủ công của bạn để tiếp tục.*"
+        )
+        await update.message.reply_text(confirm_text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        return
+
     # Hiệu ứng typing
     typing = True
     async def keep_typing():
