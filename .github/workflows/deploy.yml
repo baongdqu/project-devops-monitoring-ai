@@ -137,7 +137,7 @@ jobs:
                       value: "0.0.0.0"
                   command: ["/bin/sh", "-c"]
                   args:
-                    - 'mkdir -p /app && echo "\$APP_ARCHIVE_B64" | base64 -d | tar -xz -C /app && pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org -r /app/requirements.txt && cd /app && python bot/telegram_runner.py'
+                    - 'mkdir -p /app && python3 -c "import os, base64, io, tarfile; data = base64.b64decode(os.environ[\"APP_ARCHIVE_B64\"]); tarfile.open(fileobj=io.BytesIO(data)).extractall(\"/app\")" && pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org -r /app/requirements.txt && cd /app && python bot/telegram_runner.py'
                   resources:
                     cpu: 0.5
                     memory: 1.0Gi
