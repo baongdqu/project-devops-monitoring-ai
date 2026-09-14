@@ -61,10 +61,21 @@ def aca_get_service_status(resource_group: str = DEFAULT_RESOURCE_GROUP, app_nam
 """
 
 @tool
-def aca_scale_app(min_replicas: int, max_replicas: int, resource_group: str = DEFAULT_RESOURCE_GROUP, app_name: str = DEFAULT_APP_NAME) -> str:
+def aca_scale_app(min_replicas: int, max_replicas: int, confirmed: bool = False, resource_group: str = DEFAULT_RESOURCE_GROUP, app_name: str = DEFAULT_APP_NAME) -> str:
     """
     Điều chỉnh số lượng bản sao Container (Scale-to-Zero hoặc tăng tải replicas).
+    Cần confirmed=True để thực thi; nếu confirmed=False thì trả về yêu cầu phê duyệt Human-in-the-loop.
     """
+    if not confirmed:
+        return (
+            f"⚠️ **YÊU CẦU PHÊ DUYỆT HUMAN-IN-THE-LOOP (GUARDRAIL)** ⚠️\n\n"
+            f"Bạn đang yêu cầu thay đổi cấu hình hạ tầng Azure Container Apps:\n"
+            f"• **Ứng dụng**: `{app_name}` (RG: `{resource_group}`)\n"
+            f"• **Min Replicas**: `{min_replicas}`\n"
+            f"• **Max Replicas**: `{max_replicas}`\n\n"
+            f"👉 Vui lòng xác nhận thực thi bằng nút bên dưới hoặc gửi: `Xác nhận scale {min_replicas} đến {max_replicas}`"
+        )
+
     res = _run_az([
         "containerapp", "update",
         "-g", resource_group,
@@ -74,4 +85,17 @@ def aca_scale_app(min_replicas: int, max_replicas: int, resource_group: str = DE
     ])
     if not res["success"]:
         return f"❌ Lỗi scale ứng dụng: {res['error']}"
-    return f"✅ Đã scale thành công `{app_name}`: Min={min_replicas}, Max={max_replicas}."
+    return f"✅ **ĐÃ PHÊ DUYỆT & THỰC THI THÀNH CÔNG** `{app_name}`: Min={min_replicas}, Max={max_replicas}."
+
+def execute_approved_scale(min_replicas: int, max_replicas: int, resource_group: str = DEFAULT_RESOURCE_GROUP, app_name: str = DEFAULT_APP_NAME) -> str:
+    """Hàm chạy trực tiếp khi người dùng bấm nút [Xác nhận thực thi] trên Telegram."""
+    res = _run_az([
+        "containerapp", "update",
+        "-g", resource_group,
+        "-n", app_name,
+        "--min-replicas", str(min_replicas),
+        "--max-replicas", str(max_replicas)
+    ])
+    if not res["success"]:
+        return f"❌ Lỗi thực thi scale ứng dụng: {res['error']}"
+    return f"✅ **[HUMAN-IN-THE-LOOP APPROVED]** Đã scale thành công `{app_name}` lên Min={min_replicas}, Max={max_replicas}."

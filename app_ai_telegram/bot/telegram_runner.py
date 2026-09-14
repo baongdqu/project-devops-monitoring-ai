@@ -20,12 +20,13 @@ from backend.agent.memory import init_chat_db, create_thread, get_messages, save
 from backend.agent.graph import create_agent_graph
 from langchain_core.messages import HumanMessage, AIMessage
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode, ChatAction
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     ContextTypes,
     filters
 )
@@ -60,10 +61,11 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome = (
         f"👋 Xin chào *{user.first_name}*!\n\n"
         "Tôi là **AI Agent & DevOps Assistant** chạy trực tiếp trên **Microsoft Azure Container Apps**.\n\n"
+        "🛡️ *Bảo mật Guardrail:* Hệ thống tích hợp cơ chế **Human-in-the-loop** phê duyệt xác nhận trước mọi tác vụ hạ tầng nhạy cảm.\n\n"
         "💡 *Bạn có thể:*\n"
         "• Hỏi đáp kiến thức hoặc tra cứu Web\n"
         "• Kiểm tra tình trạng sức khỏe ứng dụng trên Azure: `/status`\n"
-        "• Scale ứng dụng Container: `/scale 2`\n"
+        "• Scale ứng dụng Container: `/scale 2` (có nút phê duyệt)\n"
         "• Reset luồng trò chuyện: `/new`\n"
         "• Trợ giúp: `/help`\n\n"
         "Hãy nhắn tin trực tiếp để bắt đầu!"
@@ -83,7 +85,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📖 *Hướng dẫn ChatOps & AI Agent:*\n\n"
         "- Gửi câu hỏi bất kỳ bằng tiếng Việt hoặc tiếng Anh.\n"
         "- Ra lệnh tự nhiên: *'Kiểm tra tình trạng urlshortener trên Azure'*, *'Scale app lên 2 replicas'*, *'Tra cứu thời tiết Hà Nội hôm nay'*.\n"
-        "- Lệnh tắt: `/status`, `/scale <số_replicas>`, `/new`."
+        "- Lệnh tắt: `/status`, `/scale <số_replicas>`, `/new`.\n"
+        "- **Human-in-the-loop Guardrail**: Mọi lệnh thay đổi hạ tầng đều yêu cầu Admin bấm xác nhận qua nút bấm tương tác."
     )
     await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
 
@@ -99,10 +102,41 @@ async def scale_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Cú pháp: `/scale <số_replicas>` (ví dụ: `/scale 2`)", parse_mode=ParseMode.MARKDOWN)
         return
     reps = int(args[0])
-    from backend.tools.azure_tools import aca_scale_app
-    sent = await update.message.reply_text(f"⏳ Đang cấu hình scale app lên {reps} replicas...")
-    res = await aca_scale_app.ainvoke({"min_replicas": reps, "max_replicas": max(reps, 3)})
-    await sent.edit_text(res)
+    
+    # Human-in-the-loop: Gửi Inline Keyboard phê duyệt
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Xác Nhận Phê Duyệt", callback_data=f"approve_scale:{reps}"),
+            InlineKeyboardButton("❌ Hủy Bỏ Lệnh", callback_data="cancel_scale")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    confirm_text = (
+        f"🛡️ **[HUMAN-IN-THE-LOOP GUARDRAIL] YÊU CẦU PHÊ DUYỆT**\n\n"
+        f"Bạn đang yêu cầu thay đổi tài nguyên trên Microsoft Azure:\n"
+        f"• **Hành động**: Scale Azure Container App\n"
+        f"• **Số Replicas Mục Tiêu**: `{reps}` (Min: {reps}, Max: {max(reps, 3)})\n"
+        f"• **Người yêu cầu**: {update.effective_user.first_name} (ID: `{update.effective_user.id}`)\n\n"
+        f"⚠️ *Hệ thống sẽ không thực thi lệnh nếu chưa có sự phê duyệt thủ công của bạn.*"
+    )
+    await update.message.reply_text(confirm_text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+
+async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Xử lý nút bấm Human-in-the-loop xác nhận thực thi."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data.startswith("approve_scale:"):
+        reps = int(data.split(":")[1])
+        await query.edit_message_text(f"⏳ **[ĐÃ PHÊ DUYỆT]** Đang tiến hành scale Azure Container Apps lên {reps} replicas...")
+        
+        from backend.tools.azure_tools import execute_approved_scale
+        res = execute_approved_scale(min_replicas=reps, max_replicas=max(reps, 3))
+        await query.message.reply_text(res)
+    elif data == "cancel_scale":
+        await query.edit_message_text("❌ **[ĐÃ HỦY BỎ]** Lệnh thay đổi hạ tầng đã bị người vận hành hủy an toàn.")
 
 async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -157,12 +191,26 @@ async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         await save_message(th_id, "assistant", full_response)
         
-        # Gửi phản hồi
+        # Gửi phản hồi kèm Human-in-the-loop button nếu phát hiện yêu cầu Guardrail
+        reply_markup = None
+        if "HUMAN-IN-THE-LOOP" in full_response.upper():
+            # Tự động parse số replicas nếu có để tạo nút phê duyệt nhanh
+            import re
+            m = re.search(r"Min\s*Replicas[\*`:\s]*(\d+)", full_response, re.IGNORECASE)
+            target_reps = int(m.group(1)) if m else 2
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Xác Nhận Phê Duyệt", callback_data=f"approve_scale:{target_reps}"),
+                    InlineKeyboardButton("❌ Hủy Bỏ Lệnh", callback_data="cancel_scale")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
         if len(full_response) <= 4000:
             try:
-                await sent_msg.edit_text(full_response, parse_mode=ParseMode.MARKDOWN)
+                await sent_msg.edit_text(full_response, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
             except Exception:
-                await sent_msg.edit_text(full_response)
+                await sent_msg.edit_text(full_response, reply_markup=reply_markup)
         else:
             await sent_msg.edit_text(full_response[:4000])
             for i in range(4000, len(full_response), 4000):
@@ -191,6 +239,7 @@ async def lifespan(app: FastAPI):
         tele_app.add_handler(CommandHandler("help", help_cmd))
         tele_app.add_handler(CommandHandler("status", status_cmd))
         tele_app.add_handler(CommandHandler("scale", scale_cmd))
+        tele_app.add_handler(CallbackQueryHandler(handle_approval_callback))
         tele_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat_message))
 
         await tele_app.initialize()

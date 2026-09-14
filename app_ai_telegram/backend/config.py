@@ -7,6 +7,7 @@ load_dotenv(BASE_DIR / ".env")
 
 class Settings:
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_ADMIN_ID: str = os.getenv("TELEGRAM_ADMIN_ID", "")
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
     OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "openrouter/free")
     TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")
