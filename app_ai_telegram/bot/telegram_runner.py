@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from backend.config import settings
+from backend.config import settings, is_admin
 from backend.agent.memory import init_chat_db, create_thread, get_messages, save_message
 from backend.agent.graph import create_agent_graph
 from langchain_core.messages import HumanMessage, AIMessage
@@ -54,6 +54,86 @@ async def get_or_create_thread(user_id: str, name: str) -> str:
     await create_thread(th_id, f"Telegram: {name}")
     user_threads[user_id] = th_id
     return th_id
+
+
+async def proactive_monitor_loop(bot_app):
+    """
+    Vòng lặp giám sát Proactive SRE:
+    Định kỳ ping endpoint Health Check của Web App và gửi cảnh báo tự động về Telegram
+    nếu phát hiện sự cố (Downtime, Latency cao, hoặc lỗi 5xx).
+    """
+    if not settings.ENABLE_PROACTIVE_MONITORING:
+        logger.info("Chế độ giám sát chủ động (Proactive Monitoring) đang tắt.")
+        return
+
+    admin_id = settings.TELEGRAM_ADMIN_ID
+    target_url = settings.TARGET_APP_URL.rstrip("/")
+    health_endpoint = f"{target_url}/health"
+    interval = max(settings.MONITOR_INTERVAL_SECONDS, 15)
+
+    logger.info(f"Khởi động Proactive Health Monitor tới {health_endpoint} (Chu kỳ {interval}s)...")
+    was_healthy = True
+    consecutive_failures = 0
+
+    import httpx
+    # Đợi 10 giây đầu tiên để bot ổn định kết nối
+    await asyncio.sleep(10)
+
+    while True:
+        try:
+            start_ts = time.time()
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                resp = await client.get(health_endpoint)
+                latency_ms = int((time.time() - start_ts) * 1000)
+
+                if resp.status_code == 200:
+                    data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+                    is_healthy = data.get("status") == "healthy" or resp.status_code == 200
+
+                    if not was_healthy and is_healthy:
+                        was_healthy = True
+                        consecutive_failures = 0
+                        logger.info("Dịch vụ URL Shortener đã hồi phục trạng thái Healthy!")
+                        if admin_id and bot_app:
+                            recovery_msg = (
+                                "💚 **[DEVOPS RECOVERY] DỊCH VỤ ĐÃ KHÔI PHỤC!**\n\n"
+                                f"• **Ứng dụng**: `urlshortener-app`\n"
+                                f"• **Endpoint**: `{health_endpoint}`\n"
+                                f"• **Trạng thái**: HTTP 200 OK (Độ trễ: `{latency_ms}ms`)\n"
+                                f"• **Uptime**: `{data.get('uptime_seconds', 'N/A')}`s\n"
+                                f"• **Thời điểm**: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}"
+                            )
+                            try:
+                                await bot_app.bot.send_message(chat_id=admin_id, text=recovery_msg, parse_mode=ParseMode.MARKDOWN)
+                            except Exception as ex:
+                                logger.error(f"Không thể gửi thông báo khôi phục: {ex}")
+                    else:
+                        consecutive_failures = 0
+                else:
+                    raise Exception(f"HTTP Status {resp.status_code}: {resp.text[:100]}")
+
+        except Exception as err:
+            consecutive_failures += 1
+            logger.warning(f"Health check thất bại ({consecutive_failures} lần): {err}")
+            # Cảnh báo khi lỗi liên tiếp 2 lần để tránh false alarm do chập chờn mạng
+            if was_healthy and consecutive_failures >= 2:
+                was_healthy = False
+                logger.error(f"Phát hiện sự cố downtime trên {health_endpoint}: {err}")
+                if admin_id and bot_app:
+                    alert_msg = (
+                        "🚨 **[DEVOPS SRE ALERT] CẢNH BÁO SỰ CỐ DỊCH VỤ!**\n\n"
+                        f"• **Ứng dụng**: `urlshortener-app`\n"
+                        f"• **Endpoint**: `{health_endpoint}`\n"
+                        f"• **Chi tiết lỗi**: `{str(err)[:150]}`\n"
+                        f"• **Thời điểm**: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n\n"
+                        "⚠️ *Hệ thống đang gặp sự cố gián đoạn. Vui lòng gõ `/status` để kiểm tra chi tiết hoặc kích hoạt khôi phục hạ tầng.*"
+                    )
+                    try:
+                        await bot_app.bot.send_message(chat_id=admin_id, text=alert_msg, parse_mode=ParseMode.MARKDOWN)
+                    except Exception as ex:
+                        logger.error(f"Không thể gửi cảnh báo lỗi: {ex}")
+
+        await asyncio.sleep(interval)
 
 # ── Telegram Handlers ──
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -97,6 +177,15 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await sent.edit_text(res, parse_mode=ParseMode.MARKDOWN)
 
 async def scale_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not is_admin(user.id):
+        await update.message.reply_text(
+            f"⛔ **[TRUY CẬP BỊ TỪ CHỐI - RBAC]**\n\n"
+            f"Tài khoản của bạn (*{user.first_name}* - ID: `{user.id}`) không có quyền Quản trị viên (Admin) để thực thi lệnh scale hạ tầng.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
     args = context.args
     if not args or not args[0].isdigit():
         await update.message.reply_text("Cú pháp: `/scale <số_replicas>` (ví dụ: `/scale 2`)", parse_mode=ParseMode.MARKDOWN)
@@ -126,6 +215,18 @@ async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT
     """Xử lý nút bấm Human-in-the-loop xác nhận thực thi."""
     query = update.callback_query
     await query.answer()
+    user = query.from_user
+
+    # Kiểm tra quyền Admin khi bấm nút phê duyệt
+    if not is_admin(user.id):
+        await query.answer("⛔ Bạn không có quyền phê duyệt thay đổi hạ tầng!", show_alert=True)
+        await query.message.reply_text(
+            f"⛔ **[TỪ CHỐI PHÊ DUYỆT]** Người dùng *{user.first_name}* (ID: `{user.id}`) "
+            f"không có quyền Admin để phê duyệt thay đổi tài nguyên hạ tầng.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
     data = query.data
 
     if data.startswith("approve_scale:"):
@@ -150,11 +251,19 @@ async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     import re
     scale_match = re.search(r"(?:scale|tăng|giảm|chỉnh|điều chỉnh).+?(\d+)\s*(?:pod|replica|bản)", text, re.IGNORECASE)
     if scale_match:
+        if not is_admin(user.id):
+            await update.message.reply_text(
+                f"⛔ **[TRUY CẬP BỊ TỪ CHỐI - RBAC]**\n\n"
+                f"Yêu cầu scale tài nguyên hạ tầng bị từ chối do tài khoản của bạn (ID: `{user.id}`) không phải Quản trị viên (Admin).",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+
         reps = int(scale_match.group(1))
         keyboard = [
             [
                 InlineKeyboardButton("✅ Xác Nhận Phê Duyệt", callback_data=f"approve_scale:{reps}"),
-                InlineKeyboardButton("❌ Hủy Bỏ Lệnh", callback_data="cancel_scale")
+                InlineKeyboardButton("❌ Hủy BỎ Lệnh", callback_data="cancel_scale")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -269,7 +378,18 @@ async def lifespan(app: FastAPI):
         await tele_app.start()
         await tele_app.updater.start_polling()
         logger.info("✅ Telegram Bot Polling đang hoạt động!")
+
+        # Kích hoạt vòng lặp giám sát Proactive SRE chạy nền
+        monitor_task = asyncio.create_task(proactive_monitor_loop(tele_app))
+    else:
+        monitor_task = None
+
     yield
+
+    if monitor_task:
+        logger.info("Đang dừng Proactive Health Monitor...")
+        monitor_task.cancel()
+
     if tele_app and tele_app.updater:
         logger.info("Đang dừng Telegram Bot Polling...")
         await tele_app.updater.stop()

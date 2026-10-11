@@ -54,6 +54,7 @@ cd "..\..\zzz kỹ năng tech - ai (separator)\( ) project my agent"
 
 ### 2. Thử nghiệm và Triển khai:
 ```powershell
+.\run_chatops.bat test        # Chạy toàn bộ bộ kiểm thử Unit & Integration (pytest)
 .\run_chatops.bat mcp         # Kiểm tra Azure DevOps MCP Server
 .\run_chatops.bat app         # Chạy thử nghiệm URL Shortener tại localhost:8000
 .\run_chatops.bat ai-local    # Chạy thử nghiệm AI Telegram Bot Server tại Local
@@ -67,5 +68,7 @@ Dự án đã được tích hợp gói mã nguồn AI độc lập tại thư m
 * **Core Agent**: LangGraph ReAct Agent tích hợp OpenAI/OpenRouter + Tavily Web Search.
 * **DevOps Tools**: Azure Status Check (`aca_get_service_status`), Scale App (`aca_scale_app`), File Tools.
 * **Dual-Runner Architecture**: Vừa duy trì Telegram Bot Polling thời gian thực, vừa cung cấp endpoint HTTP `/health` trên cổng 80 cho Ingress Health Check của Azure Container Apps.
-* **Tự động hóa Deploy**: Chỉ cần chạy `run_chatops.bat ai-deploy` để đóng gói mã nguồn và phát hành trực tiếp lên Azure Container Apps.
+* **🛡️ RBAC & DevSecOps Guardrail**: Phân quyền Admin (`TELEGRAM_ADMIN_ID`) chặn các yêu cầu scale hạ tầng trái phép, kết hợp Inline Approval Button (Human-in-the-loop).
+* **🚨 Proactive SRE Health Monitoring**: Tự động giám sát liên tục trạng thái Live của URL Shortener và gửi thông báo cảnh báo/khôi phục tức thời về Telegram của Admin khi có sự cố Downtime hoặc Latency cao.
+* **Tự động hóa Deploy & CI Quality Gate**: GitHub Actions tự động kiểm thử toàn bộ test suite (`pytest`) trước khi cấp phép deploy lên Azure ACA.
 

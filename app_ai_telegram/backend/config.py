@@ -14,6 +14,11 @@ class Settings:
     MAX_AGENT_STEPS: int = int(os.getenv("MAX_AGENT_STEPS", "15"))
     CODE_EXECUTION_TIMEOUT: int = int(os.getenv("CODE_EXECUTION_TIMEOUT", "30"))
 
+    # DevOps Proactive Health Monitoring
+    TARGET_APP_URL: str = os.getenv("TARGET_APP_URL", "https://urlshortener-app.redmoss-b81863cc.eastasia.azurecontainerapps.io")
+    MONITOR_INTERVAL_SECONDS: int = int(os.getenv("MONITOR_INTERVAL_SECONDS", "60"))
+    ENABLE_PROACTIVE_MONITORING: bool = os.getenv("ENABLE_PROACTIVE_MONITORING", "true").lower() in ("true", "1", "yes")
+
     PORT: int = int(os.getenv("PORT", "80"))
     HOST: str = os.getenv("HOST", "0.0.0.0")
 
@@ -22,6 +27,12 @@ class Settings:
     WORKSPACE_DIR: Path = BASE_DIR / "workspace"
 
 settings = Settings()
+
+def is_admin(user_id: int | str) -> bool:
+    """Kiểm tra quyền Admin RBAC cho các tác vụ thay đổi hạ tầng."""
+    if not settings.TELEGRAM_ADMIN_ID:
+        return True
+    return str(user_id).strip() == str(settings.TELEGRAM_ADMIN_ID).strip()
 
 # Đảm bảo các thư mục dữ liệu tồn tại
 settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
