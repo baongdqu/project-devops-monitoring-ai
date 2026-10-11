@@ -194,6 +194,9 @@ def main():
             sys.stdout.flush()
 
         else:
+            # Nếu không có id (là notification), bỏ qua hoàn toàn - notifications không cần response
+            if req_id is None:
+                continue
             resp = {
                 "jsonrpc": "2.0",
                 "id": req_id,
