@@ -57,8 +57,13 @@ def deploy_web_local():
 
     ok, env_id = run_az(["containerapp", "env", "show", "-n", ENVIRONMENT, "-g", RESOURCE_GROUP, "--query", "id", "-o", "tsv"])
     if not ok or not env_id:
-        print(f"❌ Không tìm thấy Container Apps Environment '{ENVIRONMENT}' trong '{RESOURCE_GROUP}'.")
-        return
+        print(f"⚙️ Khởi tạo tự động Managed Environment '{ENVIRONMENT}' trong '{RESOURCE_GROUP}'...")
+        run_az(["group", "create", "-n", RESOURCE_GROUP, "-l", LOCATION])
+        run_az(["containerapp", "env", "create", "-n", ENVIRONMENT, "-g", RESOURCE_GROUP, "-l", LOCATION])
+        ok, env_id = run_az(["containerapp", "env", "show", "-n", ENVIRONMENT, "-g", RESOURCE_GROUP, "--query", "id", "-o", "tsv"])
+        if not ok or not env_id:
+            print(f"❌ Không thể tạo Container Apps Environment '{ENVIRONMENT}'.")
+            return
 
     cosmos_endpoint = os.getenv("COSMOS_ENDPOINT", "")
     cosmos_key = os.getenv("COSMOS_KEY", "")
@@ -143,8 +148,13 @@ def deploy_ai_local():
 
     ok, env_id = run_az(["containerapp", "env", "show", "-n", ENVIRONMENT, "-g", RESOURCE_GROUP, "--query", "id", "-o", "tsv"])
     if not ok or not env_id:
-        print(f"❌ Không tìm thấy Container Apps Environment '{ENVIRONMENT}' trong '{RESOURCE_GROUP}'.")
-        return
+        print(f"⚙️ Khởi tạo tự động Managed Environment '{ENVIRONMENT}' trong '{RESOURCE_GROUP}'...")
+        run_az(["group", "create", "-n", RESOURCE_GROUP, "-l", LOCATION])
+        run_az(["containerapp", "env", "create", "-n", ENVIRONMENT, "-g", RESOURCE_GROUP, "-l", LOCATION])
+        ok, env_id = run_az(["containerapp", "env", "show", "-n", ENVIRONMENT, "-g", RESOURCE_GROUP, "--query", "id", "-o", "tsv"])
+        if not ok or not env_id:
+            print(f"❌ Không thể tạo Container Apps Environment '{ENVIRONMENT}'.")
+            return
 
     tele_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
