@@ -70,6 +70,9 @@ def deploy_web_local():
             "managedEnvironmentId": env_id.strip(),
             "configuration": {
                 "activeRevisionsMode": "Single",
+                "secrets": [
+                    {"name": "cosmos-key", "value": cosmos_key}
+                ] if cosmos_key else [],
                 "ingress": {
                     "external": True,
                     "targetPort": 80,
@@ -86,7 +89,7 @@ def deploy_web_local():
                             {"name": "APP_ARCHIVE_B64", "value": archive_b64},
                             {"name": "DB_FILE", "value": "/app/urls.db"},
                             {"name": "COSMOS_ENDPOINT", "value": cosmos_endpoint},
-                            {"name": "COSMOS_KEY", "value": cosmos_key},
+                            {"name": "COSMOS_KEY", "secretRef": "cosmos-key"} if cosmos_key else {"name": "COSMOS_KEY", "value": ""},
                             {"name": "COSMOS_DATABASE", "value": "urlshortener-db"},
                             {"name": "COSMOS_CONTAINER", "value": "links"}
                         ],
@@ -143,6 +146,18 @@ def deploy_ai_local():
         print(f"❌ Không tìm thấy Container Apps Environment '{ENVIRONMENT}' trong '{RESOURCE_GROUP}'.")
         return
 
+    tele_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
+    tavily_key = os.getenv("TAVILY_API_KEY", "")
+
+    ai_secrets = []
+    if tele_token:
+        ai_secrets.append({"name": "telegram-token", "value": tele_token})
+    if openrouter_key:
+        ai_secrets.append({"name": "openrouter-key", "value": openrouter_key})
+    if tavily_key:
+        ai_secrets.append({"name": "tavily-key", "value": tavily_key})
+
     yaml_data = {
         "location": LOCATION,
         "type": "Microsoft.App/containerApps",
@@ -150,6 +165,7 @@ def deploy_ai_local():
             "managedEnvironmentId": env_id.strip(),
             "configuration": {
                 "activeRevisionsMode": "Single",
+                "secrets": ai_secrets,
                 "ingress": {
                     "external": True,
                     "targetPort": 80,
@@ -164,10 +180,11 @@ def deploy_ai_local():
                         "name": "ai-telegram-bot",
                         "env": [
                             {"name": "APP_ARCHIVE_B64", "value": archive_b64},
-                            {"name": "TELEGRAM_BOT_TOKEN", "value": os.getenv("TELEGRAM_BOT_TOKEN", "")},
-                            {"name": "OPENROUTER_API_KEY", "value": os.getenv("OPENROUTER_API_KEY", "")},
-                            {"name": "OPENROUTER_MODEL", "value": "openrouter/free"},
-                            {"name": "TAVILY_API_KEY", "value": os.getenv("TAVILY_API_KEY", "")},
+                            {"name": "TELEGRAM_BOT_TOKEN", "secretRef": "telegram-token"} if tele_token else {"name": "TELEGRAM_BOT_TOKEN", "value": ""},
+                            {"name": "TELEGRAM_ADMIN_ID", "value": os.getenv("TELEGRAM_ADMIN_ID", "")},
+                            {"name": "OPENROUTER_API_KEY", "secretRef": "openrouter-key"} if openrouter_key else {"name": "OPENROUTER_API_KEY", "value": ""},
+                            {"name": "OPENROUTER_MODEL", "value": os.getenv("OPENROUTER_MODEL", "openrouter/free")},
+                            {"name": "TAVILY_API_KEY", "secretRef": "tavily-key"} if tavily_key else {"name": "TAVILY_API_KEY", "value": ""},
                             {"name": "PORT", "value": "80"},
                             {"name": "HOST", "value": "0.0.0.0"}
                         ],

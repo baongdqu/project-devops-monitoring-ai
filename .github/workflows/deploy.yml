@@ -68,6 +68,9 @@ jobs:
             managedEnvironmentId: $ENV_ID
             configuration:
               activeRevisionsMode: Single
+              secrets:
+                - name: cosmos-key
+                  value: "$COSMOS_KEY"
               ingress:
                 external: true
                 targetPort: 80
@@ -85,7 +88,7 @@ jobs:
                     - name: COSMOS_ENDPOINT
                       value: "$COSMOS_ENDPOINT"
                     - name: COSMOS_KEY
-                      value: "$COSMOS_KEY"
+                      secretRef: cosmos-key
                     - name: COSMOS_DATABASE
                       value: "urlshortener-db"
                     - name: COSMOS_CONTAINER
@@ -136,6 +139,13 @@ jobs:
             managedEnvironmentId: $ENV_ID
             configuration:
               activeRevisionsMode: Single
+              secrets:
+                - name: telegram-token
+                  value: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
+                - name: openrouter-key
+                  value: "${{ secrets.OPENROUTER_API_KEY }}"
+                - name: tavily-key
+                  value: "${{ secrets.TAVILY_API_KEY }}"
               ingress:
                 external: true
                 targetPort: 80
@@ -149,13 +159,15 @@ jobs:
                     - name: APP_ARCHIVE_B64
                       value: "$ARCHIVE_B64"
                     - name: TELEGRAM_BOT_TOKEN
-                      value: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
+                      secretRef: telegram-token
+                    - name: TELEGRAM_ADMIN_ID
+                      value: "${{ secrets.TELEGRAM_ADMIN_ID }}"
                     - name: OPENROUTER_API_KEY
-                      value: "${{ secrets.OPENROUTER_API_KEY }}"
+                      secretRef: openrouter-key
                     - name: OPENROUTER_MODEL
                       value: "openrouter/free"
                     - name: TAVILY_API_KEY
-                      value: "${{ secrets.TAVILY_API_KEY }}"
+                      secretRef: tavily-key
                     - name: PORT
                       value: "80"
                     - name: HOST

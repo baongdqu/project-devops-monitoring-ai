@@ -126,10 +126,22 @@ async def proactive_monitor_loop(bot_app):
                         f"• **Endpoint**: `{health_endpoint}`\n"
                         f"• **Chi tiết lỗi**: `{str(err)[:150]}`\n"
                         f"• **Thời điểm**: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n\n"
-                        "⚠️ *Hệ thống đang gặp sự cố gián đoạn. Vui lòng gõ `/status` để kiểm tra chi tiết hoặc kích hoạt khôi phục hạ tầng.*"
+                        "⚠️ *Hệ thống đang gặp sự cố gián đoạn. Bạn có thể kích hoạt tự phục hồi hoặc kiểm tra sâu bên dưới:*"
                     )
+                    keyboard = [
+                        [
+                            InlineKeyboardButton("⚡ Tự Động Phục Hồi (Scale/Restart)", callback_data="remediate_restart"),
+                            InlineKeyboardButton("🩺 Kiểm Tra Sâu (/status)", callback_data="remediate_status")
+                        ]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
                     try:
-                        await bot_app.bot.send_message(chat_id=admin_id, text=alert_msg, parse_mode=ParseMode.MARKDOWN)
+                        await bot_app.bot.send_message(
+                            chat_id=admin_id,
+                            text=alert_msg,
+                            reply_markup=reply_markup,
+                            parse_mode=ParseMode.MARKDOWN
+                        )
                     except Exception as ex:
                         logger.error(f"Không thể gửi cảnh báo lỗi: {ex}")
 
@@ -238,6 +250,24 @@ async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT
         await query.message.reply_text(res)
     elif data == "cancel_scale":
         await query.edit_message_text("❌ **[ĐÃ HỦY BỎ]** Lệnh thay đổi hạ tầng đã bị người vận hành hủy an toàn.")
+    elif data == "remediate_restart":
+        await query.edit_message_text(
+            "⏳ **[SRE SELF-HEALING KÍCH HOẠT]**\n\n"
+            "Đang gửi yêu cầu điều phối Azure Container Apps để tự động phục hồi và cấp phát Pods mới...",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        from backend.tools.azure_tools import execute_approved_scale
+        res = execute_approved_scale(min_replicas=1, max_replicas=3)
+        await query.message.reply_text(
+            f"✅ **[KẾT QUẢ KHÔI PHỤC TỰ ĐỘNG]**\n\n{res}\n\n"
+            f"Vòng lặp SRE sẽ tiếp tục theo dõi và gửi thông báo phục hồi ngay khi endpoint `/health` đạt chuẩn 200 OK.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    elif data == "remediate_status":
+        from backend.tools.azure_tools import aca_get_service_status
+        await query.answer("Đang truy vấn Azure Container Apps...")
+        res = await aca_get_service_status.ainvoke({})
+        await query.message.reply_text(res, parse_mode=ParseMode.MARKDOWN)
 
 async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text

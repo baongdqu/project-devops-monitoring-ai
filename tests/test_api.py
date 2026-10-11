@@ -52,3 +52,14 @@ def test_api_stats():
 def test_api_not_found():
     res = client.get("/non_existent_code_999", follow_redirects=False)
     assert res.status_code == 404
+
+
+def test_api_metrics():
+    res = client.get("/metrics")
+    assert res.status_code == 200
+    assert "text/plain" in res.headers["content-type"]
+    text = res.text
+    assert "urlshortener_uptime_seconds" in text
+    assert "urlshortener_http_requests_total" in text
+    assert "urlshortener_total_links" in text
+    assert "urlshortener_total_clicks" in text

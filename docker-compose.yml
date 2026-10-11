@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # 1. Web Service: URL Shortener & Live Analytics
+  urlshortener:
+    build:
+      context: ./app_url_shortener
+      dockerfile: Dockerfile
+    container_name: urlshortener-web
+    ports:
+      - "8000:80"
+    environment:
+      - DB_FILE=/app/data/urls.db
+    volumes:
+      - urlshortener_data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:80/health\")'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  # 2. AI DevOps SRE Assistant & Telegram Bot
+  ai-agent:
+    build:
+      context: ./app_ai_telegram
+      dockerfile: Dockerfile
+    container_name: ai-telegram-agent
+    ports:
+      - "8080:80"
+    environment:
+      - PORT=80
+      - HOST=0.0.0.0
+      - TARGET_APP_URL=http://urlshortener:80
+      - ENABLE_PROACTIVE_MONITORING=true
+      - MONITOR_INTERVAL_SECONDS=30
+    env_file:
+      - .env
+    depends_on:
+      urlshortener:
+        condition: service_started
+    volumes:
+      - ai_agent_data:/app/data
+      - ai_agent_workspace:/app/workspace
+    restart: unless-stopped
+
+volumes:
+  urlshortener_data:
+  ai_agent_data:
+  ai_agent_workspace:

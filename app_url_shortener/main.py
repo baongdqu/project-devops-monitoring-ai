@@ -12,7 +12,7 @@ import random
 import sqlite3
 from typing import Optional
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
 try:
@@ -92,6 +92,48 @@ async def health_detailed():
     data["server_time"] = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
     data["storage_backend"] = storage_type
     return data
+
+TOTAL_REQUESTS = 0
+ERROR_REQUESTS = 0
+
+@app.middleware("http")
+async def prometheus_metrics_middleware(request: Request, call_next):
+    global TOTAL_REQUESTS, ERROR_REQUESTS
+    TOTAL_REQUESTS += 1
+    response = await call_next(request)
+    if response.status_code >= 400:
+        ERROR_REQUESTS += 1
+    return response
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def metrics_endpoint():
+    """Endpoint định dạng Prometheus OpenMetrics phục vụ Observability (Prometheus, Grafana, Datadog)."""
+    uptime = int(time.time() - START_TIME)
+    summary = service.get_dashboard_stats()
+
+    metrics = [
+        "# HELP urlshortener_uptime_seconds Thoi gian uptime cua dich vu tinh bang giay",
+        "# TYPE urlshortener_uptime_seconds gauge",
+        f"urlshortener_uptime_seconds {uptime}",
+        "",
+        "# HELP urlshortener_http_requests_total Tong so HTTP requests da nhan",
+        "# TYPE urlshortener_http_requests_total counter",
+        f"urlshortener_http_requests_total {TOTAL_REQUESTS}",
+        "",
+        "# HELP urlshortener_http_errors_total Tong so HTTP loi 4xx hoac 5xx",
+        "# TYPE urlshortener_http_errors_total counter",
+        f"urlshortener_http_errors_total {ERROR_REQUESTS}",
+        "",
+        "# HELP urlshortener_total_links Tong so lien ket rut gon trong database",
+        "# TYPE urlshortener_total_links gauge",
+        f"urlshortener_total_links {summary.get('total_links', 0)}",
+        "",
+        "# HELP urlshortener_total_clicks Tong so luot click da ghi nhan",
+        "# TYPE urlshortener_total_clicks gauge",
+        f"urlshortener_total_clicks {summary.get('total_clicks', 0)}",
+        ""
+    ]
+    return PlainTextResponse("\n".join(metrics), media_type="text/plain; version=0.0.4; charset=utf-8")
 
 @app.get("/api/stats")
 async def get_stats():
