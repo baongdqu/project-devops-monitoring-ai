@@ -114,7 +114,7 @@ jobs:
 
   deploy-ai-agent:
     name: Deploy AI Telegram Bot
-    needs: test
+    needs: [test, deploy-web-app]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
