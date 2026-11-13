@@ -124,9 +124,11 @@ def deploy_web_local():
         os.remove(yaml_path)
 
     _, fqdn = run_az(["containerapp", "show", "-g", RESOURCE_GROUP, "-n", app_name, "--query", "properties.configuration.ingress.fqdn", "-o", "tsv"])
-    print(f"✅ Triển khai Web App thành công! URL: https://{fqdn.strip() if fqdn else 'N/A'}")
+    web_url = f"https://{fqdn.strip()}" if fqdn else ""
+    print(f"✅ Triển khai Web App thành công! URL: {web_url or 'N/A'}")
+    return web_url
 
-def deploy_ai_local():
+def deploy_ai_local(target_url: str = ""):
     print("\n" + "="*60)
     print("🤖 BẮT ĐẦU TRIỂN KHAI AI BOT: ai-telegram-agent-local")
     print("="*60)
@@ -196,7 +198,10 @@ def deploy_ai_local():
                             {"name": "OPENROUTER_MODEL", "value": os.getenv("OPENROUTER_MODEL", "openrouter/free")},
                             {"name": "TAVILY_API_KEY", "secretRef": "tavily-key"} if tavily_key else {"name": "TAVILY_API_KEY", "value": ""},
                             {"name": "PORT", "value": "80"},
-                            {"name": "HOST", "value": "0.0.0.0"}
+                            {"name": "HOST", "value": "0.0.0.0"},
+                            {"name": "TARGET_APP_URL", "value": target_url or os.getenv("TARGET_APP_URL", "http://localhost:8000")},
+                            {"name": "ENABLE_PROACTIVE_MONITORING", "value": "true"},
+                            {"name": "MONITOR_INTERVAL_SECONDS", "value": "30"}
                         ],
                         "command": ["/bin/sh", "-c"],
                         "args": [
@@ -227,5 +232,5 @@ def deploy_ai_local():
     print(f"✅ Triển khai AI Bot thành công! URL: https://{fqdn.strip() if fqdn else 'N/A'}")
 
 if __name__ == "__main__":
-    deploy_web_local()
-    deploy_ai_local()
+    web_url = deploy_web_local()
+    deploy_ai_local(target_url=web_url)

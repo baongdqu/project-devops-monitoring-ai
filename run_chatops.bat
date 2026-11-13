@@ -23,6 +23,12 @@ if "%1"=="mcp" (
 ) else if "%1"=="test" (
     echo [Chay toan bo bo kiem thu Unit Test va Integration Test...]
     pytest -v tests/
+) else if "%1"=="load-test" (
+    echo [Chay SRE Load Testing & Chaos Engineering Script...]
+    "%AGENT_PYTHON%" tests\load_test.py %2 %3 %4 %5
+) else if "%1"=="compose-up" (
+    echo [Khoi dong toan bo he thong Docker Compose kem Prometheus & Grafana...]
+    docker compose up -d
 ) else (
     echo [Cach su dung:]
     echo   run_chatops.bat test       : Chay bo kiem thu pytest (Unit & Integration)
@@ -30,6 +36,8 @@ if "%1"=="mcp" (
     echo   run_chatops.bat app        : Chay thu nghiem URL Shortener tai localhost:8000
     echo   run_chatops.bat ai-local   : Chay thu nghiem AI Telegram Bot Server tai Local
     echo   run_chatops.bat ai-deploy  : Dong goi va Deploy AI Telegram Bot len Azure ACA
+    echo   run_chatops.bat load-test  : Chay script kiem thu tai SRE va Autoscaling
+    echo   run_chatops.bat compose-up : Chay toan bo cuem container (App + Bot + Prometheus + Grafana)
     echo.
     echo Vui long chon che do chay!
 )

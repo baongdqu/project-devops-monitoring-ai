@@ -10,7 +10,8 @@ import time
 import string
 import random
 import sqlite3
-from typing import Optional
+import collections
+from typing import Optional, Dict, List
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
@@ -56,6 +57,29 @@ else:
 
 service = URLShortenerService(storage)
 
+# ── Rate Limiting & Anti-Abuse Configuration ──
+RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() in ("true", "1", "yes")
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
+RATE_LIMITED_REQUESTS = 0
+_client_request_history: Dict[str, List[float]] = collections.defaultdict(list)
+
+
+def check_rate_limit(client_ip: str, limit: Optional[int] = None, window: int = 60) -> bool:
+    """Kiểm tra giới hạn tần suất gọi API (Sliding Window Rate Limiter)."""
+    global RATE_LIMITED_REQUESTS
+    if not RATE_LIMIT_ENABLED:
+        return True
+    active_limit = limit if limit is not None else RATE_LIMIT_PER_MINUTE
+    now = time.time()
+    timestamps = _client_request_history[client_ip]
+    _client_request_history[client_ip] = [ts for ts in timestamps if now - ts < window]
+    if len(_client_request_history[client_ip]) >= active_limit:
+        RATE_LIMITED_REQUESTS += 1
+        return False
+    _client_request_history[client_ip].append(now)
+    return True
+
+
 class ShortenRequest(BaseModel):
     url: str
 
@@ -66,6 +90,18 @@ async def serve_ui(request: Request):
 
 @app.post("/api/shorten")
 async def shorten_url(payload: ShortenRequest, request: Request):
+    # Lấy IP của client (hỗ trợ reverse proxy / X-Forwarded-For trên Azure Container Apps)
+    client_ip = request.client.host if request.client else "unknown"
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+
+    if not check_rate_limit(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Too many requests. Please slow down."
+        )
+
     base_url = str(request.base_url).rstrip("/")
     # Nếu chạy qua Ingress SSL của Azure, đảm bảo tiền tố HTTPS
     if "azurecontainerapps.io" in base_url and base_url.startswith("http://"):
@@ -131,6 +167,10 @@ async def metrics_endpoint():
         "# HELP urlshortener_total_clicks Tong so luot click da ghi nhan",
         "# TYPE urlshortener_total_clicks gauge",
         f"urlshortener_total_clicks {summary.get('total_clicks', 0)}",
+        "",
+        "# HELP urlshortener_rate_limited_total Tong so requests bi chan boi Rate Limiter (HTTP 429)",
+        "# TYPE urlshortener_rate_limited_total counter",
+        f"urlshortener_rate_limited_total {RATE_LIMITED_REQUESTS}",
         ""
     ]
     return PlainTextResponse("\n".join(metrics), media_type="text/plain; version=0.0.4; charset=utf-8")

@@ -59,11 +59,25 @@ cd "..\..\zzz kỹ năng tech - ai (separator)\( ) project my agent"
 .\run_chatops.bat app         # Chạy thử nghiệm URL Shortener tại localhost:8000
 .\run_chatops.bat ai-local    # Chạy thử nghiệm AI Telegram Bot Server tại Local
 .\run_chatops.bat ai-deploy   # Đóng gói và Deploy AI Telegram Bot lên Azure ACA
+.\run_chatops.bat load-test   # Chạy SRE Load Testing & Chaos Engineering Script
+.\run_chatops.bat compose-up  # Chạy full stack (App + Bot + Prometheus :9090 + Grafana :3000)
 ```
 
 ---
 
-## 📦 Module Mới: `app_ai_telegram` (Đóng Gói Lên Azure Container Apps)
+## 📊 Full Observability & SRE Stack (Prometheus + Grafana)
+Dự án được trang bị hệ thống giám sát đồ họa thời gian thực:
+* **Prometheus**: Thu thập OpenMetrics từ endpoint `/metrics` mỗi 5s tại cổng `9090`.
+* **Grafana**: Cổng `3000` (User: `admin` / Password: `admin`), tự động import Dashboard SRE Golden Signals:
+  * Biểu đồ **Request Rate (RPS)** và **Độ trễ phản hồi**.
+  * Tỷ lệ lỗi **HTTP 4xx / 5xx** và chỉ số chặn **Rate-Limiter (429)**.
+  * Số lượng liên kết và lượt click thời gian thực.
+* **🛡️ API Rate Limiter**: Bảo vệ endpoint `/api/shorten` chống DoS và spam (mặc định 60 requests/phút/IP).
+* **⚡ SRE Load Testing**: Kịch bản `tests/load_test.py` mô phỏng tải đồng thời để kiểm chứng khả năng tự co giãn (Autoscaling) của Azure Container Apps.
+
+---
+
+## 📦 Module: `app_ai_telegram` (Đóng Gói Lên Azure Container Apps)
 Dự án đã được tích hợp gói mã nguồn AI độc lập tại thư mục `app_ai_telegram/`:
 * **Core Agent**: LangGraph ReAct Agent tích hợp OpenAI/OpenRouter + Tavily Web Search.
 * **DevOps Tools**: Azure Status Check (`aca_get_service_status`), Scale App (`aca_scale_app`), File Tools.

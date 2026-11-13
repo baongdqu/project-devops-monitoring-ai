@@ -63,3 +63,35 @@ def test_api_metrics():
     assert "urlshortener_http_requests_total" in text
     assert "urlshortener_total_links" in text
     assert "urlshortener_total_clicks" in text
+    assert "urlshortener_rate_limited_total" in text
+
+
+def test_api_rate_limiting():
+    from app_url_shortener import main as app_main
+    original_limit = app_main.RATE_LIMIT_PER_MINUTE
+    original_enabled = app_main.RATE_LIMIT_ENABLED
+    try:
+        app_main.RATE_LIMIT_ENABLED = True
+        app_main.RATE_LIMIT_PER_MINUTE = 2
+        test_ip = "192.168.100.55"
+
+        headers = {"x-forwarded-for": test_ip}
+
+        # Request 1 & 2 -> 200 OK
+        r1 = client.post("/api/shorten", json={"url": "https://bing.com/1"}, headers=headers)
+        assert r1.status_code == 200
+
+        r2 = client.post("/api/shorten", json={"url": "https://bing.com/2"}, headers=headers)
+        assert r2.status_code == 200
+
+        # Request 3 -> 429 Too Many Requests
+        r3 = client.post("/api/shorten", json={"url": "https://bing.com/3"}, headers=headers)
+        assert r3.status_code == 429
+        assert "Rate limit exceeded" in r3.json()["detail"]
+
+        # Metrics reflects rate limiting
+        metrics_res = client.get("/metrics")
+        assert "urlshortener_rate_limited_total" in metrics_res.text
+    finally:
+        app_main.RATE_LIMIT_PER_MINUTE = original_limit
+        app_main.RATE_LIMIT_ENABLED = original_enabled
