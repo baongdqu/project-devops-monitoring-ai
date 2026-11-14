@@ -188,6 +188,20 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     res = await aca_get_service_status.ainvoke({})
     await sent.edit_text(res, parse_mode=ParseMode.MARKDOWN)
 
+async def evals_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Báo cáo chỉ số chất lượng phản hồi của AI (LLM Evals)."""
+    from backend.agent.memory import get_eval_summary
+    stats = await get_eval_summary()
+    msg = (
+        "📊 **[BÁO CÁO ĐÁNH GIÁ CHẤT LƯỢNG AI & NGƯỜI DÙNG]**\n\n"
+        f"• **Tổng số lượt đánh giá**: `{stats['total_evals']}`\n"
+        f"• **Điểm trung bình (Thang 5)**: `{stats['avg_score']}/5.0` ⭐\n"
+        f"• **Đánh giá tích cực (👍 / Đạt)**: `{stats['positive_count']}`\n"
+        f"• **Đánh giá cần cải thiện (👎 / Cảnh báo)**: `{stats['negative_count']}`\n\n"
+        "🛡️ *Hệ thống tự động chấm điểm độ chính xác, phát hiện ảo giác (Hallucination) và bảo vệ an toàn dữ liệu.*"
+    )
+    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+
 async def scale_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_admin(user.id):
@@ -224,12 +238,43 @@ async def scale_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(confirm_text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
 
 async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Xử lý nút bấm Human-in-the-loop xác nhận thực thi."""
+    """Xử lý nút bấm Human-in-the-loop xác nhận thực thi và Đánh giá phản hồi người dùng."""
     query = update.callback_query
     await query.answer()
     user = query.from_user
+    data = query.data
 
-    # Kiểm tra quyền Admin khi bấm nút phê duyệt
+    # 1. Xử lý phản hồi đánh giá người dùng (Thumbs Up / Down Human Evals)
+    if data.startswith("fb:"):
+        parts = data.split(":")
+        rating = parts[1]
+        msg_id = parts[2] if len(parts) > 2 else "0"
+        score = 5.0 if rating == "good" else 1.0
+        
+        from backend.agent.memory import save_evaluation
+        await save_evaluation(
+            thread_id=f"tele_{user.id}",
+            message_id=msg_id,
+            eval_type="human_feedback",
+            score=score,
+            feedback_text=rating
+        )
+        thank_msg = "❤️ Cảm ơn bạn đã đánh giá hữu ích!" if rating == "good" else "🙏 Cảm ơn bạn đã phản hồi để AI hoàn thiện hơn!"
+        await query.answer(thank_msg, show_alert=True)
+        thank_markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"✅ Đã ghi nhận ({'👍 Hài lòng' if rating == 'good' else '👎 Cần cải thiện'})", callback_data="fb_done")]
+        ])
+        try:
+            await query.edit_message_reply_markup(reply_markup=thank_markup)
+        except Exception:
+            pass
+        return
+
+    if data == "fb_done":
+        await query.answer("Bạn đã đánh giá phản hồi này rồi.")
+        return
+
+    # 2. Kiểm tra quyền Admin khi bấm nút phê duyệt hạ tầng
     if not is_admin(user.id):
         await query.answer("⛔ Bạn không có quyền phê duyệt thay đổi hạ tầng!", show_alert=True)
         await query.message.reply_text(
@@ -367,6 +412,14 @@ async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 ]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
+        else:
+            # Gắn nút đánh giá câu trả lời (Human Evals: 👍 Hài lòng / 👎 Cần cải thiện)
+            reply_markup = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("👍 Hài lòng", callback_data=f"fb:good:{sent_msg.message_id}"),
+                    InlineKeyboardButton("👎 Cần cải thiện", callback_data=f"fb:bad:{sent_msg.message_id}")
+                ]
+            ])
 
         if len(full_response) <= 4000:
             try:
@@ -377,6 +430,26 @@ async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             await sent_msg.edit_text(full_response[:4000])
             for i in range(4000, len(full_response), 4000):
                 await update.message.reply_text(full_response[i:i+4000])
+
+        # Tự động chấm điểm chất lượng phản hồi bằng LLM-as-a-Judge / Rule-based Guardrail
+        if settings.ENABLE_AUTO_EVAL:
+            async def run_auto_eval():
+                try:
+                    from backend.agent.evals import LLMJudgeEvaluator
+                    from backend.agent.memory import save_evaluation
+                    eval_res = await LLMJudgeEvaluator.judge_response(user_prompt=text, ai_response=full_response)
+                    await save_evaluation(
+                        thread_id=th_id,
+                        message_id=str(sent_msg.message_id),
+                        eval_type=eval_res["eval_type"],
+                        score=eval_res["score"],
+                        feedback_text=f"acc={eval_res['accuracy']}|rel={eval_res['relevance']}|grd={eval_res['groundedness']}",
+                        flags=",".join(eval_res["flags"])
+                    )
+                except Exception as eval_err:
+                    logger.warning(f"Lỗi chạy Auto-eval: {eval_err}")
+
+            asyncio.create_task(run_auto_eval())
 
     except Exception as e:
         logger.error(f"Lỗi chat: {e}", exc_info=True)
@@ -400,6 +473,7 @@ async def lifespan(app: FastAPI):
         tele_app.add_handler(CommandHandler("new", new_cmd))
         tele_app.add_handler(CommandHandler("help", help_cmd))
         tele_app.add_handler(CommandHandler("status", status_cmd))
+        tele_app.add_handler(CommandHandler("evals", evals_cmd))
         tele_app.add_handler(CommandHandler("scale", scale_cmd))
         tele_app.add_handler(CallbackQueryHandler(handle_approval_callback))
         tele_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat_message))
@@ -441,6 +515,13 @@ async def health_check():
         "platform": "Azure Container Apps (ACA)",
         "telegram_active": tele_app is not None and tele_app.updater.running if tele_app else False
     })
+
+@api_server.get("/api/evals")
+async def get_evals_api():
+    """Endpoint trả về báo cáo đánh giá chất lượng AI & phản hồi người dùng."""
+    from backend.agent.memory import get_eval_summary
+    data = await get_eval_summary()
+    return JSONResponse(data)
 
 @api_server.get("/")
 async def root():

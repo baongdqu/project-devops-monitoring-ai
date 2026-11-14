@@ -84,5 +84,11 @@ Dự án đã được tích hợp gói mã nguồn AI độc lập tại thư m
 * **Dual-Runner Architecture**: Vừa duy trì Telegram Bot Polling thời gian thực, vừa cung cấp endpoint HTTP `/health` trên cổng 80 cho Ingress Health Check của Azure Container Apps.
 * **🛡️ RBAC & DevSecOps Guardrail**: Phân quyền Admin (`TELEGRAM_ADMIN_ID`) chặn các yêu cầu scale hạ tầng trái phép, kết hợp Inline Approval Button (Human-in-the-loop).
 * **🚨 Proactive SRE Health Monitoring**: Tự động giám sát liên tục trạng thái Live của URL Shortener và gửi thông báo cảnh báo/khôi phục tức thời về Telegram của Admin khi có sự cố Downtime hoặc Latency cao.
+* **🧠 LLM Evals & Automated Quality Scoring**:
+  * **Rule-based & Security Guardrails**: Tự động kiểm tra chống ảo giác thông số Azure (Hallucination Detection) và ngăn ngừa rò rỉ API Keys/Secrets trong câu trả lời của AI.
+  * **Chấm điểm tự động (LLM-as-a-Judge)**: Đánh giá điểm số (Accuracy, Relevance, Groundedness) trên thang 1-5 và lưu trữ vào SQLite database.
+  * **👍/👎 Human Feedback Loop**: Nút bấm Inline trực tiếp trên Telegram cho phép người dùng đánh giá mức độ hài lòng đối với từng phản hồi của AI.
+  * **Lệnh tra cứu báo cáo**: Lệnh `/evals` trên Telegram hoặc API `/api/evals` để xem tổng quan điểm số trung bình và tỷ lệ phản hồi tích cực.
+* **📊 Tracing & LLM Observability**: Sẵn sàng tích hợp **LangSmith** và **Langfuse** thông qua biến môi trường để theo dõi toàn bộ dấu vết suy luận (Agent Graph Tracing), đo lường độ trễ và quản trị chi phí token theo thời gian thực.
 * **Tự động hóa Deploy & CI Quality Gate**: GitHub Actions tự động kiểm thử toàn bộ test suite (`pytest`) trước khi cấp phép deploy lên Azure ACA.
 

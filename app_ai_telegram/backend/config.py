@@ -19,6 +19,15 @@ class Settings:
     MONITOR_INTERVAL_SECONDS: int = int(os.getenv("MONITOR_INTERVAL_SECONDS", "60"))
     ENABLE_PROACTIVE_MONITORING: bool = os.getenv("ENABLE_PROACTIVE_MONITORING", "true").lower() in ("true", "1", "yes")
 
+    # LLM Observability & Tracing (LangSmith / Langfuse)
+    LANGCHAIN_TRACING_V2: bool = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() in ("true", "1", "yes")
+    LANGCHAIN_API_KEY: str = os.getenv("LANGCHAIN_API_KEY", "")
+    LANGCHAIN_PROJECT: str = os.getenv("LANGCHAIN_PROJECT", "devops-ai-monitoring")
+    LANGFUSE_PUBLIC_KEY: str = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+    LANGFUSE_SECRET_KEY: str = os.getenv("LANGFUSE_SECRET_KEY", "")
+    LANGFUSE_HOST: str = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+    ENABLE_AUTO_EVAL: bool = os.getenv("ENABLE_AUTO_EVAL", "true").lower() in ("true", "1", "yes")
+
     PORT: int = int(os.getenv("PORT", "80"))
     HOST: str = os.getenv("HOST", "0.0.0.0")
 
@@ -27,6 +36,13 @@ class Settings:
     WORKSPACE_DIR: Path = BASE_DIR / "workspace"
 
 settings = Settings()
+
+# Tự động kích hoạt LangSmith Tracing nếu có cấu hình
+if settings.LANGCHAIN_TRACING_V2 and settings.LANGCHAIN_API_KEY:
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_API_KEY"] = settings.LANGCHAIN_API_KEY
+    os.environ["LANGCHAIN_PROJECT"] = settings.LANGCHAIN_PROJECT
+    print(f"📡 LangSmith Tracing đã kích hoạt cho Project: '{settings.LANGCHAIN_PROJECT}'")
 
 def is_admin(user_id: int | str) -> bool:
     """Kiểm tra quyền Admin RBAC cho các tác vụ thay đổi hạ tầng."""
